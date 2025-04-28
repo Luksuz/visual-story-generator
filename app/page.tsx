@@ -229,45 +229,52 @@ export default function Home() {
     let completedScenes = 0;
     const totalScenes = scenes.length;
     
-    // Set batch size and prepare scene indices
-    const BATCH_SIZE = 50;
-    const sceneIndices = Array.from({ length: scenes.length }, (_, i) => i);
-    
     try {
-      // Process scenes in batches
-      for (let i = 0; i < sceneIndices.length; i += BATCH_SIZE) {
-        const batchIndices = sceneIndices.slice(i, i + BATCH_SIZE);
-        console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1} with ${batchIndices.length} scenes`);
-        
-        // Create promises for the current batch
-        const batchPromises = batchIndices.map(index => {
-          return new Promise<void>(async (resolve) => {
-            try {
-              await generateSceneImage(scenes[index], index);
-            } catch (err) {
-              console.error(`Error in scene ${index} image generation:`, err);
-            } finally {
-              // Update progress regardless of success or failure
-              completedScenes++;
-              const percentage = Math.round((completedScenes / totalScenes) * 100);
-              setImageGenerationProgress(percentage);
-              resolve();
-            }
+      // Create a queue of promises to control concurrency
+      const queue = new Set();
+      const MAX_CONCURRENT_REQUESTS = 5;
+      
+      // Process all scenes with limited concurrency
+      const allScenePromises = [];
+      
+      for (let i = 0; i < scenes.length; i++) {
+        const scenePromise = (async () => {
+          // Wait until we have room in the queue
+          while (queue.size >= MAX_CONCURRENT_REQUESTS) {
+            await Promise.race(queue);
+          }
+          
+          // Create a promise for this scene
+          let resolvePromise: () => void;
+          const sceneProcessPromise = new Promise<void>(resolve => {
+            resolvePromise = resolve;
           });
-        });
+          
+          // Add to the queue first
+          queue.add(sceneProcessPromise);
+          
+          // Process the scene
+          try {
+            await generateSceneImage(scenes[i], i);
+          } catch (err) {
+            console.error(`Error in scene ${i} image generation:`, err);
+          } finally {
+            // Update progress
+            completedScenes++;
+            const percentage = Math.round((completedScenes / totalScenes) * 100);
+            setImageGenerationProgress(percentage);
+            
+            // Remove from queue and resolve
+            queue.delete(sceneProcessPromise);
+            resolvePromise!();
+          }
+        })();
         
-        // Wait for all promises in the current batch to complete
-        await Promise.all(batchPromises);
-        
-        // If there are more batches to process, add a delay
-        if (i + BATCH_SIZE < sceneIndices.length) {
-          console.log("Waiting 1 minute before processing next batch...");
-          // Show a message to the user about the backoff
-          setError(`Processed ${i + batchIndices.length} out of ${totalScenes} scenes. Waiting 1 minute before continuing...`);
-          await new Promise(resolve => setTimeout(resolve, 60000)); // 1 minute delay
-          setError(""); // Clear the message
-        }
+        allScenePromises.push(scenePromise);
       }
+      
+      // Wait for all scenes to be processed
+      await Promise.all(allScenePromises);
       
       console.log("All scene images generation completed");
     } catch (err) {
@@ -290,6 +297,9 @@ export default function Home() {
     setSceneErrors(prev => ({ ...prev, [index]: "" }));
     
     try {
+      // Add a small random delay to avoid hitting rate limits (100-500ms)
+      await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 400));
+      
       const sceneToSend = { ...scene };
       
       // If custom description is provided, use it instead

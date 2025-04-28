@@ -3,6 +3,10 @@ import { z } from "zod"
 import OpenAI, { toFile } from "openai";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 
+
+process.env.OPENAI_API_KEY = "sk-proj-zZ028Y_LUbdFm7KVceodNS7W6mdTeB2dEU09epvTx--arzXAM--dAiVvSM9X_O0sVJNuYDFe6-T3BlbkFJNfrQg8_7gHJ8WSCegNZCXkjcxwteC2cDFHnQrDFwdz0eYFVCEIjMekafHzmgNhMZ68y8Xv-Rs" //A";
+
+console.log(process.env.OPENAI_API_KEY);
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
