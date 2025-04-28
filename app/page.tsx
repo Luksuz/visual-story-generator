@@ -61,6 +61,24 @@ export default function Home() {
   const [showCharacters, setShowCharacters] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [editMode, setEditMode] = useState<"edit" | "regenerate" | null>(null)
+  const [estimatedCost, setEstimatedCost] = useState<number>(0)
+
+  // Calculate word count and estimated speaking time
+  const wordCount = storyText.trim() ? storyText.trim().split(/\s+/).length : 0;
+  const estimatedSpeakingTime = Math.ceil(wordCount / 120); // 120 words per minute
+
+  // Calculate estimated cost
+  const calculateEstimatedCost = () => {
+    const pricePerImage = selectedResolution === "1024x1024" ? 0.16 : 0.22;
+    const totalCost = Math.min(storySceneCount, 50) * pricePerImage;
+    setEstimatedCost(totalCost);
+    return totalCost;
+  }
+
+  // Update cost estimate whenever relevant factors change
+  useEffect(() => {
+    calculateEstimatedCost();
+  }, [storySceneCount, selectedResolution]);
 
   // Function to extract characters from the story text
   const extractCharacters = async () => {
@@ -566,12 +584,16 @@ export default function Home() {
                         <span className="text-sm font-medium">Enter your story</span>
                         <span className="text-xs text-gray-500">The longer and more detailed the story, the better the results</span>
                       </div>
-            <Textarea
+                      <Textarea
                         placeholder="Enter your story script here..."
                         value={storyText}
                         onChange={(e) => setStoryText(e.target.value)}
                         className="min-h-[150px]"
                       />
+                      <div className="mt-2 flex justify-between">
+                        <span className="text-xs text-gray-500">Word count: {wordCount}</span>
+                        <span className="text-xs text-gray-500">Estimated speaking time: {estimatedSpeakingTime} minutes</span>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -750,11 +772,11 @@ export default function Home() {
               <Slider 
                 value={[storySceneCount]} 
                 min={1} 
-                max={500} 
+                max={50} 
                 step={1} 
                 onValueChange={(value) => setStorySceneCount(value[0])} 
               />
-              <p className="text-xs text-gray-500">Divide your story into {storySceneCount} scenes for image generation. Adjust based on story length.</p>
+              <p className="text-xs text-gray-500">Divide your story into {storySceneCount} scenes for image generation (maximum 50). Adjust based on story length.</p>
             </div>
 
             {/* Image Resolution Selection */}
@@ -763,12 +785,10 @@ export default function Home() {
                 <span className="text-sm font-medium">Image Quality</span>
                 <span className="text-xs text-gray-500">Select the quality of your images</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2">
                 {[
-                  ["1024x1024", "Standard Quality", "Square format - good balance of speed and quality"],
-                  ["1536x1024", "High Quality", "Landscape (wide) format - better for horizontal scenes"],
-                  ["1024x1536", "High Quality", "Portrait (tall) format - better for vertical scenes"],
-                  ["auto", "Smart Select", "AI chooses the best format for each scene"]
+                  ["1024x1024", "Standard Quality", "Square format - $0.16 per image"],
+                  ["1536x1024", "High Quality", "Landscape format - $0.22 per image"]
                 ].map(([resolution, quality, description]) => (
                   <div 
                     key={resolution}
@@ -783,6 +803,19 @@ export default function Home() {
                     <div className="text-xs text-gray-500 mt-1">{description}</div>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Cost estimate display */}
+            <div className="mt-4 p-3 border rounded-md bg-blue-50">
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="font-medium text-sm">Estimated cost:</span>
+                  <span className="text-sm ml-2">${estimatedCost.toFixed(2)}</span>
+                </div>
+                <div className="text-xs text-gray-600">
+                  {storySceneCount} scenes × ${selectedResolution === "1024x1024" ? "0.16" : "0.22"} per image
+                </div>
               </div>
             </div>
 

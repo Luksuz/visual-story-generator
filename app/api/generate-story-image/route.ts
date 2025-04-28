@@ -27,11 +27,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Scene data is required" }, { status: 400 });
     }
     
-    // Validate resolution
-    const validResolutions = ["1024x1024", "1536x1024", "1024x1536", "auto"];
-    if (resolution !== "auto" && !validResolutions.includes(resolution)) {
+    // Validate resolution - only allow standard and high quality options
+    const validResolutions = ["1024x1024", "1536x1024"];
+    if (!validResolutions.includes(resolution)) {
       return NextResponse.json({ 
-        error: "Invalid resolution. Must be one of: 1024x1024, 1536x1024, 1024x1536, or auto" 
+        error: "Invalid resolution. Must be one of: 1024x1024 (Standard) or 1536x1024 (High Quality)" 
       }, { status: 400 });
     }
 

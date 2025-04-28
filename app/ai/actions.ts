@@ -297,12 +297,15 @@ export async function generateStorySceneImage(
   resolution: string = "1024x1024"
 ) {
   try {
+    // Always use landscape format - 1024x1024 for standard or 1536x1024 for high quality
+    let finalResolution = resolution === "1536x1024" ? "1536x1024" : "1024x1024";
+    
     if (sceneCharacters.length === 0) {
       // If no character images, use regular image generation
       const result = await openai.images.generate({
         model: "gpt-image-1",
-        prompt: `Create a scene showing: ${sceneDescription}`,
-        size: resolution as "1024x1024" | "256x256" | "512x512" | "1792x1024" | "1024x1792" | null,
+        prompt: `Create a wide landscape scene showing: ${sceneDescription}`,
+        size: finalResolution as any, // Cast to any to handle type constraints
       });
       
       if (!result.data || result.data.length === 0) {
@@ -326,8 +329,8 @@ export async function generateStorySceneImage(
       const result = await openai.images.edit({
         model: "gpt-image-1",
         image: characterImageFiles[0], // Use the first character image as the base
-        prompt: `Create a scene showing: ${sceneDescription}. Style of the scene should be consistent with style of reference character images.`,
-        size: resolution as "1024x1024" | "256x256" | "512x512" | null | undefined,
+        prompt: `Create a wide landscape scene showing: ${sceneDescription}. Style of the scene should be consistent with style of reference character images.`,
+        size: finalResolution as any, // Cast to any to handle type constraints
         n: 1,
       });
       
