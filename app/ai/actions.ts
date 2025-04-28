@@ -90,7 +90,7 @@ export function createStoryChunkAnalysisSchema(characterNames: string[]) {
       characters: z.array(
         z.object({
           name: z.string().describe("The character's name as it appears in the story"),
-          importance: z.number().min(1).max(10).describe("How important this character is to this chunk (1-10)")
+          importance: z.number().describe("How important this character is to this chunk (1-10)")
         })
       ).describe("Characters that appear in this chunk of the story"),
       setting: z.string().describe("The setting or location where this part of the story takes place"),
