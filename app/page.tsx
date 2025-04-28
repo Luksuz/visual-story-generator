@@ -17,6 +17,7 @@ import { saveAs } from 'file-saver'
 
 type Character = {
   name: string
+  archetype: string
   description: string
   traits: string[]
   background: string
@@ -62,15 +63,21 @@ export default function Home() {
   const [regenerating, setRegenerating] = useState(false)
   const [editMode, setEditMode] = useState<"edit" | "regenerate" | null>(null)
   const [estimatedCost, setEstimatedCost] = useState<number>(0)
+  const [characterImagesCost, setCharacterImagesCost] = useState<number>(0)
 
   // Calculate word count and estimated speaking time
   const wordCount = storyText.trim() ? storyText.trim().split(/\s+/).length : 0;
   const estimatedSpeakingTime = Math.ceil(wordCount / 120); // 120 words per minute
 
-  // Calculate estimated cost
+  // Calculate total estimated cost (scenes + characters)
   const calculateEstimatedCost = () => {
-    const pricePerImage = selectedResolution === "1024x1024" ? 0.16 : 0.22;
-    const totalCost = Math.min(storySceneCount, 50) * pricePerImage;
+    // Scene images cost
+    const pricePerSceneImage = selectedResolution === "1024x1024" ? 0.16 : 0.22;
+    const scenesImagesCost = Math.min(storySceneCount, 50) * pricePerSceneImage;
+    
+    // Total cost combines both character and scene image costs
+    const totalCost = scenesImagesCost + characterImagesCost;
+    
     setEstimatedCost(totalCost);
     return totalCost;
   }
@@ -78,7 +85,7 @@ export default function Home() {
   // Update cost estimate whenever relevant factors change
   useEffect(() => {
     calculateEstimatedCost();
-  }, [storySceneCount, selectedResolution]);
+  }, [storySceneCount, selectedResolution, characterImagesCost]);
 
   // Function to extract characters from the story text
   const extractCharacters = async () => {
@@ -91,6 +98,7 @@ export default function Home() {
     setError("")
     setCharacters([])
     setCharacterImages([])
+    setCharacterImagesCost(0) // Reset character images cost
     setCharacterExtractionStatus("Analyzing script to identify characters...")
 
     try {
@@ -109,6 +117,11 @@ export default function Home() {
 
       const data = await response.json()
       setCharacters(data.characters)
+      
+      // Calculate character images cost (assuming standard quality at $0.16 per image)
+      const charCost = data.characters.length * 0.16;
+      setCharacterImagesCost(charCost);
+      
       setCharacterExtractionStatus(`Successfully extracted ${data.characters.length} characters from script`)
       
       // Automatically generate character images
@@ -136,9 +149,10 @@ export default function Home() {
     setError("")
 
     try {
-      // Generate images for each character
+      // Generate images for each character using their archetype and description to avoid moderation
       const charactersForImages = extractedCharacters.map(char => ({
-        name: char.name,
+        name: char.name, // Keep real name for reference
+        archetype: char.archetype, // Use archetype for image generation
         description: char.description
       }))
       
@@ -673,14 +687,14 @@ export default function Home() {
             {characterExtractionStatus && (
               <div className={`p-3 rounded text-sm ${
                 characterExtractionStatus.includes("Error") ? "bg-red-50 text-red-800" : 
-                characterExtractionStatus.includes("complete") ? "bg-green-50 text-green-800" : 
+                characterExtractionStatus.includes("complete") || characterExtractionStatus.includes("Successfully") ? "bg-green-50 text-green-800" : 
                 "bg-blue-50 text-blue-800"
               }`}>
                 <div className="flex items-center">
                   {extractingCharacters && (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   )}
-                  {characterExtractionStatus.includes("complete") && (
+                  {characterExtractionStatus.includes("Successfully") && (
                     <svg className="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
@@ -692,6 +706,14 @@ export default function Home() {
                   )}
                   <span>{characterExtractionStatus}</span>
                 </div>
+
+                {/* Display character image cost if characters were extracted */}
+                {characters.length > 0 && characterImagesCost > 0 && (
+                  <div className="mt-2 pt-2 border-t border-green-100 flex justify-between items-center">
+                    <span className="text-sm font-medium">Character images cost:</span>
+                    <span className="font-medium">${characterImagesCost.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
             )}
             
@@ -720,7 +742,13 @@ export default function Home() {
                       {characters.map((character, index) => (
                         <Card key={index} className="overflow-hidden">
                           <CardHeader className="p-3">
-                            <CardTitle className="text-base">{character.name}</CardTitle>
+                            <CardTitle className="text-base">
+                              <span className="flex items-center">
+                                <UserIcon className="h-4 w-4 mr-1 text-blue-500" />
+                                {/* Display the archetype name with "The" prefix if needed */}
+                                {character.name}
+                              </span>
+                            </CardTitle>
                           </CardHeader>
                           <CardContent className="p-3 pt-0 space-y-3">
                             {/* Character Image */}
@@ -753,6 +781,11 @@ export default function Home() {
                                   </Badge>
                                 ))}
                               </div>
+                            </div>
+
+                            <div>
+                              <h3 className="text-xs font-medium mb-1">Background:</h3>
+                              <p className="text-xs text-gray-600">{character.background}</p>
                             </div>
                           </CardContent>
                         </Card>
@@ -810,11 +843,23 @@ export default function Home() {
             <div className="mt-4 p-3 border rounded-md bg-blue-50">
               <div className="flex justify-between items-center">
                 <div>
-                  <span className="font-medium text-sm">Estimated cost:</span>
+                  <span className="font-medium text-sm">Estimated total cost:</span>
                   <span className="text-sm ml-2">${estimatedCost.toFixed(2)}</span>
                 </div>
                 <div className="text-xs text-gray-600">
-                  {storySceneCount} scenes × ${selectedResolution === "1024x1024" ? "0.16" : "0.22"} per image
+                  {storySceneCount > 50 ? "50" : storySceneCount} scenes × ${selectedResolution === "1024x1024" ? "0.16" : "0.22"} per image
+                </div>
+              </div>
+              
+              {/* Detailed cost breakdown */}
+              <div className="mt-2 pt-2 border-t border-blue-100 text-xs text-gray-600">
+                <div className="flex justify-between">
+                  <span>Character images: {characters.length} × $0.16</span>
+                  <span>${characterImagesCost.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Scene images: {Math.min(storySceneCount, 50)} × ${selectedResolution === "1024x1024" ? "0.16" : "0.22"}</span>
+                  <span>${(estimatedCost - characterImagesCost).toFixed(2)}</span>
                 </div>
               </div>
             </div>

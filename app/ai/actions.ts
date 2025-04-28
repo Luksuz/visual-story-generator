@@ -64,15 +64,20 @@ export async function generateCharacterImage(description: string, style?: string
 }
 
 // Function to generate multiple character images in parallel
-export async function generateCharacterImages(characters: Array<{ name: string; description: string }>, style?: string) {
+export async function generateCharacterImages(characters: Array<{ name: string; archetype: string; description: string }>, style?: string) {
   try {
-    const imagePromises = characters.map(character => 
-      generateCharacterImage(character.description, style)
+    const imagePromises = characters.map(character => {
+      // Use archetype instead of name for image generation prompt
+      // This helps avoid potential moderation issues with OpenAI
+      const imageDescription = `${character.archetype}: ${character.description}`;
+      
+      return generateCharacterImage(imageDescription, style)
         .then(imageData => ({
           name: character.name,
+          archetype: character.archetype,
           imageData
-        }))
-    );
+        }));
+    });
     
     return Promise.all(imagePromises);
   } catch (error) {
@@ -408,19 +413,37 @@ export async function extractCharactersFromScript(storyText: string) {
     const CharacterExtractionSchema = z.object({
       characters: z.array(
         z.object({
-          name: z.string().describe("The character's full name"),
+          name: z.string().describe("The character's actual name as it appears in the script"),
+          archetype: z.string().describe("A generic role or archetype label (e.g., 'Hero', 'Villain', 'Mentor')"),
           description: z.string().describe("A detailed physical description of the character"),
           traits: z.array(z.string()).describe("Key personality traits of the character"),
           background: z.string().describe("Brief background or history of the character")
         })
-      ).describe("All characters that appear in the script with relevant details")
+      ).describe("All significant characters that appear in the script with relevant details")
     });
 
     // Create a prompt for character extraction
     const extractionPrompt = `
-Analyze the following story script and identify all unique characters. For each character, extract their name, provide a detailed physical description, list their key personality traits, and summarize their background. If any information is not explicitly stated, make reasonable inferences based on the character's dialogue and actions.
+Analyze the following story script and identify distinct characters. For each character:
 
-Focus on identifying main and supporting characters only. Ignore minor background characters that have no significant role.
+1. Extract their ACTUAL NAME as it appears in the script (e.g., "John Smith", "Mary Johnson")
+2. Assign a generic ARCHETYPE or role label that describes their function (e.g., "Hero", "Villain", "Mentor", "Sidekick")
+3. Provide a detailed physical description
+4. List their key personality traits
+5. Summarize their role and background in the story
+
+IMPORTANT: Make sure to use the character's REAL NAME in the "name" field and a GENERIC ARCHETYPE in the "archetype" field.
+The archetype field will be used for image generation to avoid moderation issues, so it should be a generic role description.
+Dont refer to real names in the description, just provide a generic description of the character, if not provided, think of one.
+
+Example:
+name: "Sarah Johnson"
+archetype: "Hero"
+description: "A young woman with a strong sense of justice and a knack for solving problems, Wears a red cape and blue tights"
+traits: ["strong sense of justice", "problem solver", "determined"]
+background: "Sarah grew up in a small town where she witnessed the corruption of the local authorities. This inspired her to become a hero and fight for justice."
+
+Focus on identifying main and supporting characters only. Ignore minor background characters.
 
 Story script:
 ${storyText}
