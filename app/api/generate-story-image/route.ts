@@ -1,5 +1,6 @@
-import { generateStorySceneImage } from "@/app/ai/actions";
+import { generateStorySceneImageOpenai, generateStorySceneImageMiniMax } from "@/app/ai/actions";
 import { NextResponse } from "next/server";
+
 
 // Define types for scene and character data
 type SceneCharacter = {
@@ -21,7 +22,15 @@ type CharacterImage = {
 
 export async function POST(req: Request) {
   try {
-    const { scene, characterImages = [], style = "realistic", resolution = "1024x1024", fullScript = "" } = await req.json();
+    const { 
+      scene, 
+      characterImages = [], 
+      style = "realistic", 
+      resolution = "1024x1024", 
+      fullScript = "", 
+      provider = "openai",
+      isMosaic = false 
+    } = await req.json();
 
     if (!scene) {
       return NextResponse.json({ error: "Scene data is required" }, { status: 400 });
@@ -36,19 +45,27 @@ export async function POST(req: Request) {
     }
 
     try {
-      // Find the character images for characters in this scene (if any character images are provided)
-      const sceneCharacterImages = Array.isArray(characterImages) && characterImages.length > 0 
-        ? scene.characters
-            .map((sceneChar: SceneCharacter) => {
-              const matchingChar = characterImages.find(
-                (charImg: CharacterImage) => charImg.name === sceneChar.name
-              );
-              return matchingChar ? { ...matchingChar } : null;
-            })
-            .filter((char: CharacterImage | null) => char !== null)
-            // Limit to first 4 characters since that's what the API can handle
-            .slice(0, 4)
-        : []; // Empty array if no character images
+      // Find the character images for characters in this scene
+      let sceneCharacterImages: CharacterImage[] = [];
+      
+      // If this is a mosaic image for MiniMax, just use the first (and only) image
+      if (provider === "minimax" && isMosaic && characterImages.length > 0) {
+        console.log("Using character mosaic image for MiniMax");
+        sceneCharacterImages = [characterImages[0]];
+      } 
+      // Otherwise use the normal character matching logic
+      else if (Array.isArray(characterImages) && characterImages.length > 0) {
+        sceneCharacterImages = scene.characters
+          .map((sceneChar: SceneCharacter) => {
+            const matchingChar = characterImages.find(
+              (charImg: CharacterImage) => charImg.name === sceneChar.name
+            );
+            return matchingChar ? { ...matchingChar } : null;
+          })
+          .filter((char: CharacterImage | null) => char !== null)
+          // Limit to first 4 characters since that's what the API can handle
+          .slice(0, 4);
+      }
       
       // Create a detailed prompt for the scene with style info
       let styleDescription = style;
@@ -87,7 +104,12 @@ ${scene.characters.length > 0 ?
   ''}`;
       
       // Generate the scene image with the specified resolution
-      const imageData = await generateStorySceneImage(prompt, sceneCharacterImages as CharacterImage[], resolution);
+      let imageData;
+      if (provider === "minimax") {
+        imageData = await generateStorySceneImageMiniMax(prompt, sceneCharacterImages as CharacterImage[], resolution);
+      } else {
+        imageData = await generateStorySceneImageOpenai(prompt, sceneCharacterImages as CharacterImage[], resolution);
+      }
       
       return NextResponse.json({ 
         imageData,

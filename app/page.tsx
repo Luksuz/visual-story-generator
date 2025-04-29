@@ -64,6 +64,7 @@ export default function Home() {
   const [editMode, setEditMode] = useState<"edit" | "regenerate" | null>(null)
   const [estimatedCost, setEstimatedCost] = useState<number>(0)
   const [characterImagesCost, setCharacterImagesCost] = useState<number>(0)
+  const [selectedProvider, setSelectedProvider] = useState<string>("openai")
 
   // Calculate word count and estimated speaking time
   const wordCount = storyText.trim() ? storyText.trim().split(/\s+/).length : 0;
@@ -71,12 +72,21 @@ export default function Home() {
 
   // Calculate total estimated cost (scenes + characters)
   const calculateEstimatedCost = () => {
-    // Scene images cost
-    const pricePerSceneImage = selectedResolution === "1024x1024" ? 0.16 : 0.22;
+    // Scene images cost - apply provider-specific pricing
+    let pricePerSceneImage;
+    if (selectedProvider === "minimax") {
+      pricePerSceneImage = 0.0035; // MiniMax pricing for all images
+    } else {
+      pricePerSceneImage = selectedResolution === "1024x1024" ? 0.16 : 0.22; // OpenAI pricing based on resolution
+    }
     const scenesImagesCost = Math.min(storySceneCount, 50) * pricePerSceneImage;
     
+    // Character images cost - use provider-specific pricing
+    const characterCost = characters.length * (selectedProvider === "minimax" ? 0.0035 : 0.16);
+    setCharacterImagesCost(characterCost);
+    
     // Total cost combines both character and scene image costs
-    const totalCost = scenesImagesCost + characterImagesCost;
+    const totalCost = scenesImagesCost + characterCost;
     
     setEstimatedCost(totalCost);
     return totalCost;
@@ -85,7 +95,7 @@ export default function Home() {
   // Update cost estimate whenever relevant factors change
   useEffect(() => {
     calculateEstimatedCost();
-  }, [storySceneCount, selectedResolution, characterImagesCost]);
+  }, [storySceneCount, selectedResolution, selectedProvider, characters.length]);
 
   // Function to extract characters from the story text
   const extractCharacters = async () => {
@@ -118,8 +128,8 @@ export default function Home() {
       const data = await response.json()
       setCharacters(data.characters)
       
-      // Calculate character images cost (assuming standard quality at $0.16 per image)
-      const charCost = data.characters.length * 0.16;
+      // Calculate character images cost based on selected provider
+      const charCost = data.characters.length * (selectedProvider === "minimax" ? 0.0035 : 0.16);
       setCharacterImagesCost(charCost);
       
       setCharacterExtractionStatus(`Successfully extracted ${data.characters.length} characters from script`)
@@ -163,7 +173,8 @@ export default function Home() {
         },
         body: JSON.stringify({ 
           characters: charactersForImages,
-          style: customStyleInput || selectedImageStyle
+          style: customStyleInput || selectedImageStyle,
+          provider: selectedProvider
         }),
       })
 
@@ -320,6 +331,92 @@ export default function Home() {
     }
   }
 
+  // Helper function to find character image
+  const getCharacterImage = (name: string) => {
+    return characterImages.find(img => img.name === name)?.imageData || null;
+  }
+
+  // Helper function to create a mosaic from character images for a scene
+  const createCharacterMosaicForScene = async (scene: Scene): Promise<string | null> => {
+    if (!scene.characters || scene.characters.length === 0 || characterImages.length === 0) {
+      return null;
+    }
+
+    // Get character images that appear in this scene
+    const relevantCharacters = scene.characters
+      .map(char => char.name)
+      .filter(name => getCharacterImage(name) !== null);
+
+    if (relevantCharacters.length === 0) {
+      return null;
+    }
+
+    // If only one character, just return that image
+    if (relevantCharacters.length === 1) {
+      return getCharacterImage(relevantCharacters[0]);
+    }
+
+    // Create a canvas to combine images
+    return new Promise<string | null>((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // If we can't get the 2D context, resolve with null
+      if (!ctx) {
+        console.error("Failed to get 2D context from canvas");
+        resolve(null);
+        return;
+      }
+      
+      // Size canvas based on number of images (make it a grid)
+      const imgPerRow = Math.ceil(Math.sqrt(relevantCharacters.length));
+      const rows = Math.ceil(relevantCharacters.length / imgPerRow);
+      
+      // Each character thumbnail size
+      const thumbSize = 256; // Size of each character image in the mosaic
+      
+      canvas.width = imgPerRow * thumbSize;
+      canvas.height = rows * thumbSize;
+      
+      // Fill canvas with white background
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Count loaded images
+      let loadedImages = 0;
+      
+      // Process each character's image
+      relevantCharacters.forEach((charName, index) => {
+        const imageData = getCharacterImage(charName);
+        if (!imageData) return;
+        
+        // Create new image
+        const img = document.createElement('img') as HTMLImageElement;
+        img.onload = () => {
+          // Calculate position in grid
+          const col = index % imgPerRow;
+          const row = Math.floor(index / imgPerRow);
+          const x = col * thumbSize;
+          const y = row * thumbSize;
+          
+          // Draw image to canvas
+          ctx.drawImage(img, x, y, thumbSize, thumbSize);
+          
+          // Check if all images are loaded
+          loadedImages++;
+          if (loadedImages === relevantCharacters.length) {
+            // Convert canvas to base64
+            const base64Data = canvas.toDataURL('image/png').split(',')[1];
+            resolve(base64Data);
+          }
+        };
+        
+        // Load image from base64
+        img.src = `data:image/png;base64,${imageData}`;
+      });
+    });
+  };
+
   // Function to generate image for a single scene
   const generateSceneImage = async (scene: Scene, index: number, customDescription?: string) => {
     if (!scene) return;
@@ -338,6 +435,29 @@ export default function Home() {
       if (customDescription) {
         sceneToSend.visualDescription = customDescription;
       }
+
+      // For MiniMax, we need to create a mosaic of character images
+      let characterImagesForRequest: Array<{ name: string; imageData: string }> = [];
+      let characterMosaic: string | null = null;
+      
+      if (selectedProvider === "minimax" && scene.characters && scene.characters.length > 0) {
+        console.log(`Creating character mosaic for scene ${index} with ${scene.characters.length} characters`);
+        characterMosaic = await createCharacterMosaicForScene(scene);
+        // If we created a mosaic, send just that one image
+        if (characterMosaic) {
+          characterImagesForRequest = [{
+            name: "character_mosaic",
+            imageData: characterMosaic
+          }];
+          console.log("Created character mosaic for MiniMax");
+        } else {
+          characterImagesForRequest = [];
+          console.log("No relevant character images found for mosaic");
+        }
+      } else {
+        // For OpenAI, send all character images as normal
+        characterImagesForRequest = characterImages.length > 0 ? characterImages : [];
+      }
       
       const response = await fetch("/api/generate-story-image", {
         method: "POST",
@@ -346,10 +466,13 @@ export default function Home() {
         },
         body: JSON.stringify({ 
           scene: sceneToSend,
-          characterImages: characterImages.length > 0 ? characterImages : [], // Send empty array if no character images
+          characterImages: characterImagesForRequest, // Now contains either all images or just the mosaic
           style: customStyleInput || selectedImageStyle,
           resolution: selectedResolution,
-          fullScript: storyText // Include the full story script for context
+          fullScript: storyText, // Include the full story script for context
+          provider: selectedProvider,
+          // Flag to indicate if we're sending a mosaic
+          isMosaic: selectedProvider === "minimax" && characterMosaic !== null
         }),
       });
       
@@ -409,7 +532,8 @@ export default function Home() {
           existingImage: storyImages[index]?.imageData,
           style: customStyleInput || selectedImageStyle,
           resolution: selectedResolution,
-          fullScript: storyText
+          fullScript: storyText,
+          provider: selectedProvider
         }),
       });
       
@@ -514,11 +638,6 @@ export default function Home() {
     }
   };
   
-  // Helper function to find character image
-  const getCharacterImage = (name: string) => {
-    return characterImages.find(img => img.name === name)?.imageData || null;
-  }
-
   // Logic to check if the Generate Scene Images button should be disabled
   const isGenerateSceneImagesDisabled = () => {
     return generatingStoryImages || scenes.length === 0;
@@ -839,6 +958,40 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Provider Selection */}
+            <div className="space-y-2 mt-4">
+              <div className="flex justify-between">
+                <span className="text-sm font-medium">Image Provider</span>
+                <span className="text-xs text-gray-500">Select the AI provider for all images</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ["openai", "OpenAI DALL-E", "Higher quality, resolution-based pricing"],
+                  ["minimax", "MiniMax", "Fixed $0.0035 per image for all images"]
+                ].map(([provider, name, description]) => (
+                  <div 
+                    key={provider}
+                    onClick={() => {
+                      setSelectedProvider(provider);
+                      // Recalculate character images cost when provider changes
+                      if (characters.length > 0) {
+                        const updatedCost = characters.length * (provider === "minimax" ? 0.0035 : 0.16);
+                        setCharacterImagesCost(updatedCost);
+                      }
+                    }}
+                    className={`border rounded-md p-3 cursor-pointer text-center transition-colors ${
+                      selectedProvider === provider
+                        ? "bg-blue-50 border-blue-300" 
+                        : "hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="font-medium text-sm">{name}</div>
+                    <div className="text-xs text-gray-500 mt-1">{description}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Cost estimate display */}
             <div className="mt-4 p-3 border rounded-md bg-blue-50">
               <div className="flex justify-between items-center">
@@ -847,18 +1000,25 @@ export default function Home() {
                   <span className="text-sm ml-2">${estimatedCost.toFixed(2)}</span>
                 </div>
                 <div className="text-xs text-gray-600">
-                  {storySceneCount > 50 ? "50" : storySceneCount} scenes × ${selectedResolution === "1024x1024" ? "0.16" : "0.22"} per image
+                  {selectedProvider === "minimax" ?
+                    `${characters.length + Math.min(storySceneCount, 50)} images × $0.0035` :
+                    `${characters.length} characters + ${Math.min(storySceneCount, 50)} scenes at OpenAI rates`
+                  }
                 </div>
               </div>
               
               {/* Detailed cost breakdown */}
               <div className="mt-2 pt-2 border-t border-blue-100 text-xs text-gray-600">
                 <div className="flex justify-between">
-                  <span>Character images: {characters.length} × $0.16</span>
+                  <span>Character images: {characters.length} × ${selectedProvider === "minimax" ? "0.0035" : "0.16"}</span>
                   <span>${characterImagesCost.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Scene images: {Math.min(storySceneCount, 50)} × ${selectedResolution === "1024x1024" ? "0.16" : "0.22"}</span>
+                  <span>Scene images: {Math.min(storySceneCount, 50)} × ${
+                    selectedProvider === "minimax" ? 
+                    "0.05" : 
+                    (selectedResolution === "1024x1024" ? "0.16" : "0.22")
+                  }</span>
                   <span>${(estimatedCost - characterImagesCost).toFixed(2)}</span>
                 </div>
               </div>

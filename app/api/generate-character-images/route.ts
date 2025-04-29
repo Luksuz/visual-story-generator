@@ -1,15 +1,22 @@
-import { generateCharacterImages } from "@/app/ai/actions";
+import { generateCharacterImagesMiniMax, generateCharacterImagesOpenai } from "@/app/ai/actions";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { characters, style = "realistic" } = await req.json();
+    const { characters, style = "realistic", provider } = await req.json();
 
     if (!characters || !Array.isArray(characters)) {
       return NextResponse.json({ error: "Invalid characters data" }, { status: 400 });
     }
 
-    const characterImages = await generateCharacterImages(characters, style);
+    let characterImages;
+    if (provider === "minimax") {
+      console.log("Generating character images with MiniMax");
+      characterImages = await generateCharacterImagesMiniMax(characters, style);
+    } else {
+      console.log("Generating character images with OpenAI");
+      characterImages = await generateCharacterImagesOpenai(characters, style);
+    }
     
     return NextResponse.json({ images: characterImages });
   } catch (error) {

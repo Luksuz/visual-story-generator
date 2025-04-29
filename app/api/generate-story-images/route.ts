@@ -1,9 +1,9 @@
-import { generateStorySceneImages } from "@/app/ai/actions";
+import { generateStorySceneImagesMiniMax, generateStorySceneImagesOpenai } from "@/app/ai/actions";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { scenes, characterImages } = await req.json();
+    const { scenes, characterImages, provider } = await req.json();
 
     if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
       return NextResponse.json({ error: "Valid scene data is required" }, { status: 400 });
@@ -14,8 +14,16 @@ export async function POST(req: Request) {
     }
 
     try {
-      const storyImages = await generateStorySceneImages(scenes, characterImages);
-      return NextResponse.json({ images: storyImages });
+      console.log("Generating story images with provider:", provider);
+      if (provider === "minimax") {
+        console.log("Generating story images with MiniMax");
+        const storyImages = await generateStorySceneImagesMiniMax(scenes, characterImages);
+        return NextResponse.json({ images: storyImages });
+      } else {
+        console.log("Generating story images with OpenAI");
+        const storyImages = await generateStorySceneImagesOpenai(scenes, characterImages);
+        return NextResponse.json({ images: storyImages });
+      }
     } catch (imageError) {
       console.error("Error in image processing:", imageError);
       
