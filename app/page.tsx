@@ -258,7 +258,7 @@ export default function Home() {
     try {
       // Create a queue of promises to control concurrency
       const queue = new Set();
-      const MAX_CONCURRENT_REQUESTS = 50;
+      const MAX_CONCURRENT_REQUESTS = 5;
       
       // Process all scenes with limited concurrency
       const allScenePromises = [];
@@ -992,33 +992,35 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Image Tone Preference */}
-            <div className="space-y-2 mt-4">
-              <div className="flex justify-between">
-                <span className="text-sm font-medium">Image Tone</span>
-                <span className="text-xs text-gray-500">Choose the brightness level of generated images</span>
+            {/* Image Tone Preference - only show for MiniMax/Option 1 */}
+            {selectedProvider === "minimax" && (
+              <div className="space-y-2 mt-4">
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium">Image Tone</span>
+                  <span className="text-xs text-gray-500">Choose the brightness level of generated images</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ["light", "Light", "Bright, well-lit scenes"],
+                    ["balanced", "Balanced", "Natural lighting (default)"],
+                    ["dark", "Dark", "Dramatic, darker scenes"]
+                  ].map(([value, name, description]) => (
+                    <div 
+                      key={value}
+                      onClick={() => setImageTonePreference(value)}
+                      className={`border rounded-md p-3 cursor-pointer text-center transition-colors ${
+                        imageTonePreference === value
+                          ? "bg-blue-50 border-blue-300" 
+                          : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="font-medium text-sm">{name}</div>
+                      <div className="text-xs text-gray-500 mt-1">{description}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  ["light", "Light", "Bright, well-lit scenes"],
-                  ["balanced", "Balanced", "Natural lighting (default)"],
-                  ["dark", "Dark", "Dramatic, darker scenes"]
-                ].map(([value, name, description]) => (
-                  <div 
-                    key={value}
-                    onClick={() => setImageTonePreference(value)}
-                    className={`border rounded-md p-3 cursor-pointer text-center transition-colors ${
-                      imageTonePreference === value
-                        ? "bg-blue-50 border-blue-300" 
-                        : "hover:bg-gray-50"
-                    }`}
-                  >
-                    <div className="font-medium text-sm">{name}</div>
-                    <div className="text-xs text-gray-500 mt-1">{description}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            )}
 
             {/* Custom Style Input with improved label */}
             <div className="space-y-2 mt-4">
