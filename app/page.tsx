@@ -55,46 +55,22 @@ export default function Home() {
   const [imageGenerationProgress, setImageGenerationProgress] = useState(0)
   const [selectedImageStyle, setSelectedImageStyle] = useState<string>("realistic")
   const [customStyleInput, setCustomStyleInput] = useState<string>("")
-  const [selectedResolution, setSelectedResolution] = useState<string>("1024x1024")
+  const [selectedResolution, setSelectedResolution] = useState<string>("1536x1024")
   const [editingSceneIndex, setEditingSceneIndex] = useState<number | null>(null)
   const [editedDescription, setEditedDescription] = useState<string>("")
   const [characterExtractionStatus, setCharacterExtractionStatus] = useState<string>("")
   const [showCharacters, setShowCharacters] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [editMode, setEditMode] = useState<"edit" | "regenerate" | null>(null)
-  const [estimatedCost, setEstimatedCost] = useState<number>(0)
-  const [characterImagesCost, setCharacterImagesCost] = useState<number>(0)
-  const [selectedProvider, setSelectedProvider] = useState<string>("openai")
+  const [selectedProvider, setSelectedProvider] = useState<string>("minimax")
 
   // Calculate word count and estimated speaking time
   const wordCount = storyText.trim() ? storyText.trim().split(/\s+/).length : 0;
   const estimatedSpeakingTime = Math.ceil(wordCount / 120); // 120 words per minute
 
-  // Calculate total estimated cost (scenes + characters)
-  const calculateEstimatedCost = () => {
-    // Scene images cost - apply provider-specific pricing
-    let pricePerSceneImage;
-    if (selectedProvider === "minimax") {
-      pricePerSceneImage = 0.0035; // MiniMax pricing for all images
-    } else {
-      pricePerSceneImage = selectedResolution === "1024x1024" ? 0.16 : 0.22; // OpenAI pricing based on resolution
-    }
-    const scenesImagesCost = Math.min(storySceneCount, 50) * pricePerSceneImage;
-    
-    // Character images cost - use provider-specific pricing
-    const characterCost = characters.length * (selectedProvider === "minimax" ? 0.0035 : 0.16);
-    setCharacterImagesCost(characterCost);
-    
-    // Total cost combines both character and scene image costs
-    const totalCost = scenesImagesCost + characterCost;
-    
-    setEstimatedCost(totalCost);
-    return totalCost;
-  }
-
   // Update cost estimate whenever relevant factors change
   useEffect(() => {
-    calculateEstimatedCost();
+    // This used to calculate cost - now removed
   }, [storySceneCount, selectedResolution, selectedProvider, characters.length]);
 
   // Function to extract characters from the story text
@@ -108,7 +84,6 @@ export default function Home() {
     setError("")
     setCharacters([])
     setCharacterImages([])
-    setCharacterImagesCost(0) // Reset character images cost
     setCharacterExtractionStatus("Analyzing script to identify characters...")
 
     try {
@@ -127,10 +102,6 @@ export default function Home() {
 
       const data = await response.json()
       setCharacters(data.characters)
-      
-      // Calculate character images cost based on selected provider
-      const charCost = data.characters.length * (selectedProvider === "minimax" ? 0.0035 : 0.16);
-      setCharacterImagesCost(charCost);
       
       setCharacterExtractionStatus(`Successfully extracted ${data.characters.length} characters from script`)
       
@@ -275,7 +246,7 @@ export default function Home() {
     try {
       // Create a queue of promises to control concurrency
       const queue = new Set();
-      const MAX_CONCURRENT_REQUESTS = 5;
+      const MAX_CONCURRENT_REQUESTS = 50;
       
       // Process all scenes with limited concurrency
       const allScenePromises = [];
@@ -418,8 +389,11 @@ export default function Home() {
   };
 
   // Function to generate image for a single scene
-  const generateSceneImage = async (scene: Scene, index: number, customDescription?: string) => {
+  const generateSceneImage = async (scene: Scene, index: number, customDescription?: string, retryCount: number = 0) => {
     if (!scene) return;
+    
+    // Maximum retries
+    const MAX_RETRIES = 3;
     
     // Update status for this scene
     setSceneImageStatus(prev => ({ ...prev, [index]: "loading" }));
@@ -496,9 +470,18 @@ export default function Home() {
       setSceneImageStatus(prev => ({ ...prev, [index]: "success" }));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to generate scene image";
+      
+      // Auto-retry logic for errors
+      if (retryCount < MAX_RETRIES) {
+        console.log(`Retry attempt ${retryCount + 1} for scene ${index} after error: ${errorMessage}`);
+        // Wait a bit longer between retries (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return generateSceneImage(scene, index, customDescription, retryCount + 1);
+      }
+      
       setSceneErrors(prev => ({ ...prev, [index]: errorMessage }));
       setSceneImageStatus(prev => ({ ...prev, [index]: "error" }));
-      console.error(`Error generating image for scene ${index}:`, err);
+      console.error(`Error generating image for scene ${index} after ${retryCount} retries:`, err);
       throw err; // Re-throw to be caught by the wrapper
     }
   };
@@ -825,14 +808,6 @@ export default function Home() {
                   )}
                   <span>{characterExtractionStatus}</span>
                 </div>
-
-                {/* Display character image cost if characters were extracted */}
-                {characters.length > 0 && characterImagesCost > 0 && (
-                  <div className="mt-2 pt-2 border-t border-green-100 flex justify-between items-center">
-                    <span className="text-sm font-medium">Character images cost:</span>
-                    <span className="font-medium">${characterImagesCost.toFixed(2)}</span>
-                  </div>
-                )}
               </div>
             )}
             
@@ -934,50 +909,32 @@ export default function Home() {
             {/* Image Resolution Selection */}
             <div className="space-y-2 mt-4">
               <div className="flex justify-between">
-                <span className="text-sm font-medium">Image Quality</span>
-                <span className="text-xs text-gray-500">Select the quality of your images</span>
+                <span className="text-sm font-medium">Image Format</span>
+                <span className="text-xs text-gray-500">Set image resolution for videos</span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ["1024x1024", "Standard Quality", "Square format - $0.16 per image"],
-                  ["1536x1024", "High Quality", "Landscape format - $0.22 per image"]
-                ].map(([resolution, quality, description]) => (
-                  <div 
-                    key={resolution}
-                    onClick={() => setSelectedResolution(resolution)}
-                    className={`border rounded-md p-3 cursor-pointer text-center transition-colors ${
-                      selectedResolution === resolution 
-                        ? "bg-blue-50 border-blue-300" 
-                        : "hover:bg-gray-50"
-                    }`}
-                  >
-                    <div className="font-medium text-sm">{quality}</div>
-                    <div className="text-xs text-gray-500 mt-1">{description}</div>
-                  </div>
-                ))}
+              <div className="p-3 border rounded-md flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-sm">Landscape Format</div>
+                  <div className="text-xs text-gray-500 mt-1">1536×1024 - optimal for YouTube videos</div>
+                </div>
               </div>
             </div>
 
             {/* Provider Selection */}
             <div className="space-y-2 mt-4">
               <div className="flex justify-between">
-                <span className="text-sm font-medium">Image Provider</span>
+                <span className="text-sm font-medium">Image Generation Option</span>
                 <span className="text-xs text-gray-500">Select the AI provider for all images</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  ["openai", "OpenAI DALL-E", "Higher quality, resolution-based pricing"],
-                  ["minimax", "MiniMax", "Fixed $0.0035 per image for all images"]
+                  ["minimax", "Option 1", "Standard option (recommended)"],
+                  ["openai", "Option 2", "Alternative option"]
                 ].map(([provider, name, description]) => (
                   <div 
                     key={provider}
                     onClick={() => {
                       setSelectedProvider(provider);
-                      // Recalculate character images cost when provider changes
-                      if (characters.length > 0) {
-                        const updatedCost = characters.length * (provider === "minimax" ? 0.0035 : 0.16);
-                        setCharacterImagesCost(updatedCost);
-                      }
                     }}
                     className={`border rounded-md p-3 cursor-pointer text-center transition-colors ${
                       selectedProvider === provider
@@ -989,38 +946,6 @@ export default function Home() {
                     <div className="text-xs text-gray-500 mt-1">{description}</div>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            {/* Cost estimate display */}
-            <div className="mt-4 p-3 border rounded-md bg-blue-50">
-              <div className="flex justify-between items-center">
-                <div>
-                  <span className="font-medium text-sm">Estimated total cost:</span>
-                  <span className="text-sm ml-2">${estimatedCost.toFixed(2)}</span>
-                </div>
-                <div className="text-xs text-gray-600">
-                  {selectedProvider === "minimax" ?
-                    `${characters.length + Math.min(storySceneCount, 50)} images × $0.0035` :
-                    `${characters.length} characters + ${Math.min(storySceneCount, 50)} scenes at OpenAI rates`
-                  }
-                </div>
-              </div>
-              
-              {/* Detailed cost breakdown */}
-              <div className="mt-2 pt-2 border-t border-blue-100 text-xs text-gray-600">
-                <div className="flex justify-between">
-                  <span>Character images: {characters.length} × ${selectedProvider === "minimax" ? "0.0035" : "0.16"}</span>
-                  <span>${characterImagesCost.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Scene images: {Math.min(storySceneCount, 50)} × ${
-                    selectedProvider === "minimax" ? 
-                    "0.05" : 
-                    (selectedResolution === "1024x1024" ? "0.16" : "0.22")
-                  }</span>
-                  <span>${(estimatedCost - characterImagesCost).toFixed(2)}</span>
-                </div>
               </div>
             </div>
 
