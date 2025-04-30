@@ -67,23 +67,6 @@ export async function POST(req: Request) {
           .slice(0, 4);
       }
       
-      // Create a detailed prompt for the scene with style info
-      let styleDescription = style;
-      
-      // If one of our predefined styles is used, substitute with more detailed description
-      const styleDescriptions: Record<string, string> = {
-        realistic: "photorealistic, highly detailed, professional photography",
-        cartoon: "cartoon style, bold outlines, bright colors, stylized proportions",
-        viking: "nordic viking style, medieval norse aesthetic, runic elements, dramatic lighting, epic fantasy",
-        western: "wild west style, desert landscapes, rustic textures, dusty color palette, frontier aesthetic",
-        noir: "film noir style, dramatic shadows, high contrast, moody black and white, cinematic lighting",
-        cyberpunk: "cyberpunk style, neon colors, dystopian future, high-tech low-life, digital effects, night city"
-      };
-      
-      if (styleDescriptions[style]) {
-        styleDescription = styleDescriptions[style];
-      }
-      
       // Extract a portion of the full script that relates to this scene (to avoid exceeding token limits)
       let scriptContext = "";
       if (fullScript && fullScript.length > 0) {
@@ -96,7 +79,7 @@ export async function POST(req: Request) {
         }
       }
       
-      const prompt = `${scriptContext}Create a visually striking scene in ${styleDescription} style showing: ${scene.visualDescription}
+      const prompt = `${scriptContext}Create a visually striking scene in ${style} style showing: ${scene.visualDescription}
 Setting: ${scene.setting}
 Mood: ${scene.mood}
 ${scene.characters.length > 0 ? 

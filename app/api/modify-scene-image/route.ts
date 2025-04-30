@@ -1,4 +1,4 @@
-import { generateStorySceneImage } from "@/app/ai/actions";
+import { generateStorySceneImageMiniMax, generateStorySceneImageOpenai } from "@/app/ai/actions";
 import { NextResponse } from "next/server";
 
 // Define types for scene and character data
@@ -200,7 +200,8 @@ async function modifyStorySceneImage(
   modificationPrompt: string,
   existingImageBase64: string,
   sceneCharacters: CharacterImage[],
-  resolution: string = "1024x1024"
+  resolution: string = "1024x1024",
+  provider: string = "openai"
 ) {
   try {
     // For now, we'll just use the generate-story-image endpoint's functionality
@@ -212,8 +213,11 @@ async function modifyStorySceneImage(
     
     // For now, just return a call to the regular image generation
     // with a prompt that asks to maintain the original composition
-    const { generateStorySceneImage } = await import("@/app/ai/actions");
-    return await generateStorySceneImage(modificationPrompt, sceneCharacters, resolution);
+    if (provider === "openai") {
+      return await generateStorySceneImageOpenai(modificationPrompt, sceneCharacters, resolution);
+    } else {
+      return await generateStorySceneImageMiniMax(modificationPrompt, sceneCharacters, resolution);
+    }
   } catch (error) {
     console.error("Error modifying story scene image:", error);
     throw error;

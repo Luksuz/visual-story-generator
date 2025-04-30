@@ -4,9 +4,9 @@ const apiKey = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJHcm91cE5hbWUiOiJMRcODTyB
 
 const payload = {
   "model": "image-01", 
-  "prompt": "men Dressing in white t shirt, full-body stand front view image :25, outdoor, Venice beach sign, full-body image, Los Angeles, Fashion photography of 90s, documentary, Film grain, photorealistic",
+  "prompt": "a penguin in a business suit. cartoon style",
   "aspect_ratio": "16:9",
-  "response_format": "base64",
+  "response_format": "url",
   "n": 1,
   "prompt_optimizer": true
 };

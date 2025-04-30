@@ -656,6 +656,7 @@ export async function generateStorySceneImagesMiniMax(
     setting: string;
     mood: string;
     visualDescription: string;
+    style: string;
   }>,
   characterImages: Array<{ name: string; imageData: string }>
 ) {
@@ -681,6 +682,7 @@ export async function generateStorySceneImagesMiniMax(
       }
 Setting: ${scene.setting}
 Mood: ${scene.mood}
+style: ${scene.style}
 ${
   scene.characters.length > 0
     ? `Featuring characters: ${scene.characters.map((c) => c.name).join(", ")}`

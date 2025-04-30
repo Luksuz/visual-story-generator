@@ -16,7 +16,7 @@ const data = readFileAsBase64(yourFilePath);
 
 const payload = {
   "model": "image-01",
-  "prompt": "Smiling girl, mountain in background. ",
+  "prompt": "Smiling girl, mountain in background. cartoon style",
   "subject_reference": [
     {
       "type": "character",
@@ -24,7 +24,7 @@ const payload = {
     },
   ],
   "n": 2,
-  "response_format": "base64"
+  "response_format": "url"
 };
 
 const headers = {
