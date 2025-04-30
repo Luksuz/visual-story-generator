@@ -63,10 +63,22 @@ export default function Home() {
   const [regenerating, setRegenerating] = useState(false)
   const [editMode, setEditMode] = useState<"edit" | "regenerate" | null>(null)
   const [selectedProvider, setSelectedProvider] = useState<string>("minimax")
+  const [imageTonePreference, setImageTonePreference] = useState<string>("balanced")
 
   // Calculate word count and estimated speaking time
   const wordCount = storyText.trim() ? storyText.trim().split(/\s+/).length : 0;
-  const estimatedSpeakingTime = Math.ceil(wordCount / 120); // 120 words per minute
+  // Calculate exact seconds using 2.5 words per second
+  const estimatedSpeakingSeconds = Math.ceil(wordCount / 2.5);
+  
+  // Format the time to show minutes and seconds if over 60 seconds
+  const formatTime = (seconds: number) => {
+    if (seconds < 60) return `${seconds} seconds`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return remainingSeconds > 0 ? 
+      `${minutes} min ${remainingSeconds} sec` : 
+      `${minutes} min`;
+  };
 
   // Update cost estimate whenever relevant factors change
   useEffect(() => {
@@ -433,6 +445,29 @@ export default function Home() {
         characterImagesForRequest = characterImages.length > 0 ? characterImages : [];
       }
       
+      // Create a randomized timestamp to prevent cached/repeated images
+      const randomSeed = Date.now() + Math.floor(Math.random() * 100000);
+      
+      // Enhance style description based on tone preference
+      let enhancedStyle = customStyleInput || selectedImageStyle;
+      
+      // Add lighting/tone preference to the style
+      if (imageTonePreference === "light") {
+        enhancedStyle += ", bright lighting, well-lit scene, vibrant, daytime";
+      } else if (imageTonePreference === "dark") {
+        enhancedStyle += ", dramatic lighting, dark atmosphere, shadows, low-key lighting";
+      } else {
+        enhancedStyle += ", balanced lighting, natural light";
+      }
+      
+      // For MiniMax, enforce style more strictly
+      if (selectedProvider === "minimax") {
+        // For realistic style, add more descriptors to ensure it's not cartoonish
+        if (selectedImageStyle === "realistic" && !customStyleInput) {
+          enhancedStyle = "hyper-realistic, photorealistic, detailed, high-definition photography, " + enhancedStyle;
+        }
+      }
+      
       const response = await fetch("/api/generate-story-image", {
         method: "POST",
         headers: {
@@ -441,12 +476,16 @@ export default function Home() {
         body: JSON.stringify({ 
           scene: sceneToSend,
           characterImages: characterImagesForRequest, // Now contains either all images or just the mosaic
-          style: customStyleInput || selectedImageStyle,
+          style: enhancedStyle,
           resolution: selectedResolution,
           fullScript: storyText, // Include the full story script for context
           provider: selectedProvider,
           // Flag to indicate if we're sending a mosaic
-          isMosaic: selectedProvider === "minimax" && characterMosaic !== null
+          isMosaic: selectedProvider === "minimax" && characterMosaic !== null,
+          // Add randomization parameters to prevent repetition
+          randomSeed: randomSeed,
+          // Add tone preference
+          tonePref: imageTonePreference
         }),
       });
       
@@ -708,7 +747,11 @@ export default function Home() {
                       />
                       <div className="mt-2 flex justify-between">
                         <span className="text-xs text-gray-500">Word count: {wordCount}</span>
-                        <span className="text-xs text-gray-500">Estimated speaking time: {estimatedSpeakingTime} minutes</span>
+                        <span className="text-xs text-gray-500">
+                          {wordCount === 0 ? "Enter text to see estimated speaking time" : 
+                           `Estimated speaking time: ${formatTime(estimatedSpeakingSeconds)}`
+                          }
+                        </span>
                       </div>
                     </div>
                   ) : (
@@ -938,6 +981,34 @@ export default function Home() {
                     }}
                     className={`border rounded-md p-3 cursor-pointer text-center transition-colors ${
                       selectedProvider === provider
+                        ? "bg-blue-50 border-blue-300" 
+                        : "hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="font-medium text-sm">{name}</div>
+                    <div className="text-xs text-gray-500 mt-1">{description}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Image Tone Preference */}
+            <div className="space-y-2 mt-4">
+              <div className="flex justify-between">
+                <span className="text-sm font-medium">Image Tone</span>
+                <span className="text-xs text-gray-500">Choose the brightness level of generated images</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ["light", "Light", "Bright, well-lit scenes"],
+                  ["balanced", "Balanced", "Natural lighting (default)"],
+                  ["dark", "Dark", "Dramatic, darker scenes"]
+                ].map(([value, name, description]) => (
+                  <div 
+                    key={value}
+                    onClick={() => setImageTonePreference(value)}
+                    className={`border rounded-md p-3 cursor-pointer text-center transition-colors ${
+                      imageTonePreference === value
                         ? "bg-blue-50 border-blue-300" 
                         : "hover:bg-gray-50"
                     }`}

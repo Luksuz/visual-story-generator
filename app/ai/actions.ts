@@ -572,7 +572,9 @@ ${
 export async function generateStorySceneImageMiniMax(
   sceneDescription: string,
   sceneCharacters: Array<{ name: string; imageData: string }>,
-  resolution: string = "1024x1024"
+  resolution: string = "1024x1024",
+  tonePreference: string = "balanced",
+  randomSeed?: string
 ) {
   try {
     // Always use landscape format - 1024x1024 for standard or 1536x1024 for high quality
@@ -595,6 +597,7 @@ export async function generateStorySceneImageMiniMax(
       // The frontend will send a character mosaic if needed
       const characterImageData = sceneCharacters[0].imageData;
       
+      // Include random seed and prompt optimizer to avoid repetition
       payload = {
         model: "image-01",
         prompt: sceneDescription,
@@ -608,6 +611,11 @@ export async function generateStorySceneImageMiniMax(
         height: height,
         n: 1,
         response_format: "base64",
+        prompt_optimizer: false, // Disable to get more control over style
+        custom_params: {
+          seed: randomSeed ? parseInt(randomSeed.substring(0, 10)) % 1000000 : Math.floor(Math.random() * 1000000),
+          tone_preference: tonePreference
+        }
       };
     } else {
       payload = {
@@ -617,6 +625,11 @@ export async function generateStorySceneImageMiniMax(
         height: height,
         n: 1,
         response_format: "base64",
+        prompt_optimizer: false, // Disable to get more control over style
+        custom_params: {
+          seed: randomSeed ? parseInt(randomSeed.substring(0, 10)) % 1000000 : Math.floor(Math.random() * 1000000),
+          tone_preference: tonePreference
+        }
       };
     }
 
@@ -658,7 +671,8 @@ export async function generateStorySceneImagesMiniMax(
     visualDescription: string;
     style: string;
   }>,
-  characterImages: Array<{ name: string; imageData: string }>
+  characterImages: Array<{ name: string; imageData: string }>,
+  tonePreference: string = "balanced"
 ) {
   try {
     const sceneImagePromises = scenes.map((scene) => {
@@ -689,10 +703,16 @@ ${
     : ""
 }`;
 
+      // Generate unique seed for each scene
+      const randomSeed = Date.now() + "-" + Math.floor(Math.random() * 1000000);
+
       // Generate the scene image
       return generateStorySceneImageMiniMax(
         prompt,
-        sceneCharacterImages as Array<{ name: string; imageData: string }>
+        sceneCharacterImages as Array<{ name: string; imageData: string }>,
+        "1536x1024",
+        tonePreference,
+        randomSeed
       ).then((imageData) => ({
         summary: scene.summary,
         imageData,

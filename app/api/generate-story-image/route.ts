@@ -29,7 +29,9 @@ export async function POST(req: Request) {
       resolution = "1024x1024", 
       fullScript = "", 
       provider = "openai",
-      isMosaic = false 
+      isMosaic = false,
+      randomSeed = Date.now(),
+      tonePref = "balanced"
     } = await req.json();
 
     if (!scene) {
@@ -79,17 +81,28 @@ export async function POST(req: Request) {
         }
       }
       
+      // Add randomization and tone parameters to prevent repetition
+      const randomPromptAddition = provider === "minimax" ? 
+        ` [Random Seed: ${randomSeed}]` : 
+        ""; // For OpenAI we don't need this
+      
       const prompt = `${scriptContext}Create a visually striking scene in ${style} style showing: ${scene.visualDescription}
 Setting: ${scene.setting}
 Mood: ${scene.mood}
 ${scene.characters.length > 0 ? 
   `Featuring characters: ${scene.characters.map((c: SceneCharacter) => c.name).join(', ')}` : 
-  ''}`;
+  ''}${randomPromptAddition}`;
       
       // Generate the scene image with the specified resolution
       let imageData;
       if (provider === "minimax") {
-        imageData = await generateStorySceneImageMiniMax(prompt, sceneCharacterImages as CharacterImage[], resolution);
+        imageData = await generateStorySceneImageMiniMax(
+          prompt, 
+          sceneCharacterImages as CharacterImage[], 
+          resolution, 
+          tonePref,
+          randomSeed.toString()
+        );
       } else {
         imageData = await generateStorySceneImageOpenai(prompt, sceneCharacterImages as CharacterImage[], resolution);
       }
