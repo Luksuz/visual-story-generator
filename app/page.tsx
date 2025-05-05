@@ -64,7 +64,8 @@ export default function Home() {
   const [editMode, setEditMode] = useState<"edit" | "regenerate" | null>(null)
   const [selectedProvider, setSelectedProvider] = useState<string>("minimax")
   const [imageTonePreference, setImageTonePreference] = useState<string>("balanced")
-
+  const [selectedImages, setSelectedImages] = useState<Set<number>>(new Set())
+  
   // Calculate word count and estimated speaking time
   const wordCount = storyText.trim() ? storyText.trim().split(/\s+/).length : 0;
   // Calculate exact seconds using 2.5 words per second
@@ -665,6 +666,79 @@ export default function Home() {
     return generatingStoryImages || scenes.length === 0;
   }
 
+  // Toggle selection of an image for regeneration
+  const toggleImageSelection = (index: number) => {
+    setSelectedImages(prev => {
+      const newSelection = new Set(prev);
+      if (newSelection.has(index)) {
+        newSelection.delete(index);
+      } else {
+        newSelection.add(index);
+      }
+      return newSelection;
+    });
+  }
+
+  // Regenerate selected images
+  const regenerateSelectedImages = async () => {
+    if (selectedImages.size === 0) return;
+    
+    setError("");
+    setRegenerating(true);
+    
+    try {
+      // Create promises for each selected image
+      const regenerationPromises = Array.from(selectedImages).map(index => {
+        const scene = scenes[index];
+        if (!scene) return Promise.resolve();
+        
+        // Reset status for this scene
+        setSceneImageStatus(prev => ({ ...prev, [index]: "loading" }));
+        setSceneErrors(prev => ({ ...prev, [index]: "" }));
+        
+        // Generate new image
+        return generateSceneImage(scene, index);
+      });
+      
+      // Wait for all regenerations to complete
+      await Promise.all(regenerationPromises);
+      console.log(`Successfully regenerated ${selectedImages.size} images`);
+      
+      // Clear the selection
+      setSelectedImages(new Set());
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to regenerate images";
+      setError(errorMessage);
+      console.error("Error regenerating images:", err);
+    } finally {
+      setRegenerating(false);
+    }
+  }
+  
+  // Regenerate all images
+  const regenerateAllImages = async () => {
+    setError("");
+    setRegenerating(true);
+    
+    try {
+      // Create a new set with all scene indices
+      const allIndices = new Set(scenes.map((_, index) => index));
+      setSelectedImages(allIndices);
+      
+      // Wait briefly for state to update
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Generate new images for all scenes
+      await regenerateSelectedImages();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to regenerate all images";
+      setError(errorMessage);
+      console.error("Error regenerating all images:", err);
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   // Function to download a single image
   const downloadImage = (imageData: string, sceneName: string, index: number) => {
     const linkSource = `data:image/png;base64,${imageData}`;
@@ -1143,6 +1217,44 @@ export default function Home() {
               </div>
             )}
             
+            {/* Regenerate Selected and All Images Buttons */}
+            {storyImages.length > 0 && (
+              <div className="mt-2 flex gap-2">
+                <Button 
+                  onClick={regenerateSelectedImages}
+                  variant="outline"
+                  className="flex-1"
+                  size="sm"
+                  disabled={selectedImages.size === 0 || regenerating || generatingStoryImages}
+                >
+                  {regenerating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Regenerating...
+                    </>
+                  ) : (
+                    `Regenerate Selected (${selectedImages.size})`
+                  )}
+                </Button>
+                <Button 
+                  onClick={regenerateAllImages}
+                  variant="outline"
+                  className="flex-1"
+                  size="sm"
+                  disabled={storyImages.length === 0 || regenerating || generatingStoryImages}
+                >
+                  {regenerating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Regenerating...
+                    </>
+                  ) : (
+                    "Regenerate All"
+                  )}
+                </Button>
+              </div>
+            )}
+            
             {/* Progress bar for image generation */}
             {generatingStoryImages && (
               <div className="mt-2">
@@ -1193,11 +1305,33 @@ export default function Home() {
                         <div className="mt-4">
                           {storyImages[index] ? (
                             <div className="border rounded overflow-hidden">
-                              <img 
-                                src={`data:image/png;base64,${storyImages[index].imageData}`} 
-                                alt={`Scene ${index + 1}`} 
-                                className="w-full h-auto"
-                              />
+                              <div className="relative">
+                                <img 
+                                  src={`data:image/png;base64,${storyImages[index].imageData}`} 
+                                  alt={`Scene ${index + 1}`} 
+                                  className="w-full h-auto"
+                                />
+                                {/* Selection checkbox */}
+                                <div className="absolute top-2 right-2">
+                                  <div 
+                                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer ${
+                                      selectedImages.has(index) 
+                                        ? 'bg-blue-500 border-blue-600' 
+                                        : 'bg-white border-gray-300'
+                                    }`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleImageSelection(index);
+                                    }}
+                                  >
+                                    {selectedImages.has(index) && (
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
                               <div className="p-2 flex justify-end bg-gray-50 border-t">
                                 <Button
                                   size="sm"
@@ -1214,15 +1348,6 @@ export default function Home() {
                                 >
                                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 mr-1"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                                   Edit Image
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => startEditingScene(scene, index, "regenerate")}
-                                  className="ml-2"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 mr-1"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/></svg>
-                                  Regenerate
                                 </Button>
                               </div>
                             </div>
